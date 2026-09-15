@@ -17,6 +17,48 @@ MAPPING_FIELDS = [
     {'key': 'discount_pct', 'label': 'نسبة الخصم', 'required': False},
 ]
 
+# Literal column-name matches only (English name or a known Arabic synonym) -- never based on
+# column content. Used to pre-fill the mapping screen; the user can always change any selection.
+COLUMN_NAME_SYNONYMS = {
+    'amount': ['amount', 'المبلغ', 'الإجمالي', 'المبلغ الإجمالي', 'القيمة', 'السعر', 'اجمالي الفاتورة'],
+    'date': ['date', 'التاريخ', 'تاريخ الفاتورة', 'اليوم'],
+    'hour': ['hour', 'الساعة', 'الوقت', 'وقت الفاتورة'],
+    'employee': ['employee', 'الموظف', 'البائع', 'اسم الموظف', 'الكاشير', 'المستخدم'],
+    'payment': ['payment', 'طريقة الدفع', 'الدفع', 'نوع الدفع', 'وسيلة الدفع'],
+    'discount_pct': ['discount_pct', 'الخصم', 'نسبة الخصم', 'الخصومات'],
+}
+
+
+def _normalize_column_name(name):
+    return ' '.join(str(name).strip().lower().split())
+
+
+def auto_match_columns(columns):
+    """Pre-fill the mapping screen using exact (case/whitespace-insensitive) name matches
+    against the expected English field name or a known Arabic synonym -- not a content-based
+    guess. Each source column is used for at most one field; unmatched fields are left None
+    for the user to pick themselves.
+    """
+    by_normalized_name = {}
+    for col in columns:
+        key = _normalize_column_name(col)
+        if key not in by_normalized_name:
+            by_normalized_name[key] = col
+
+    used = set()
+    matches = {}
+    for field in MAPPING_FIELDS:
+        matched = None
+        for synonym in COLUMN_NAME_SYNONYMS.get(field['key'], []):
+            candidate = by_normalized_name.get(_normalize_column_name(synonym))
+            if candidate and candidate not in used:
+                matched = candidate
+                break
+        matches[field['key']] = matched
+        if matched:
+            used.add(matched)
+    return matches
+
 
 def apply_mapping(raw_df, mapping, start_id=1):
     """Build a standardized invoice dataframe from a raw upload using a user-chosen column mapping.

@@ -7,7 +7,7 @@ import pandas as pd
 from flask import Flask, render_template, request, session, send_file, redirect, url_for
 
 from analysis import (
-    REQUIRED_COLUMNS, MAPPING_FIELDS, apply_mapping,
+    REQUIRED_COLUMNS, MAPPING_FIELDS, apply_mapping, auto_match_columns,
     add_features, detect_invoice_fraud, build_profile,
 )
 
@@ -103,10 +103,11 @@ def upload_preview():
         store['error'] = 'الملف المرفوع لا يحتوي على أعمدة يمكن مطابقتها.'
         return redirect(url_for('index'))
 
+    columns = [str(c) for c in raw_df.columns]
     store['pending_raw_csv'] = raw_df.to_csv(index=False)
-    store['pending_columns'] = [str(c) for c in raw_df.columns]
+    store['pending_columns'] = columns
     store['pending_filename'] = uploaded.filename
-    store['mapping_selection'] = {}
+    store['mapping_selection'] = auto_match_columns(columns)
     store['error'] = None
 
     return redirect(url_for('index'))
