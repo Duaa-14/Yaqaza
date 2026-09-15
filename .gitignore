@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environment / secrets
+.env
+.venv/
+venv/
+
+# Project backup snapshot (kept locally only, not tracked)
+backup/
+
+# OS
+.DS_Store
+Thumbs.db

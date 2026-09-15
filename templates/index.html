@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>يقظة | كشف احتيال الفواتير</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-inner">
+    <div class="logo">
+      <span class="logo-mark">◎</span>
+      <span class="logo-text">يقظة</span>
+    </div>
+    <span class="navbar-badge">مدعوم بالذكاء الاصطناعي</span>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <span class="eyebrow">نظام كشف الاحتيال في الفواتير</span>
+      <h1>يقظة تراقب فواتيرك&nbsp;على مدار الساعة</h1>
+      <p>يحلّل يقظة كل فاتورة برصد الأنماط غير الطبيعية في المبالغ والتوقيت والخصومات وطرق الدفع، ويكشف الموظفين ذوي مؤشرات الخطورة المرتفعة.</p>
+    </div>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <span class="hero-stat-icon">🧾</span>
+        <div>
+          <b>تحليل فوري</b>
+          <small>لأي عدد من الفواتير</small>
+        </div>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-stat-icon">🎯</span>
+        <div>
+          <b>دقة قابلة للضبط</b>
+          <small>حساسية كشف مرنة</small>
+        </div>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-stat-icon">👤</span>
+        <div>
+          <b>تحليل سلوكي</b>
+          <small>لكل موظف وشهر</small>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  {% if error %}
+  <div class="alert alert-error">⚠ {{ error }}</div>
+  {% endif %}
+
+  {% set arabic_num = ['', '١', '٢', '٣', '٤'] %}
+  {% set ns = namespace(step=1) %}
+  <form id="analyzeForm" method="POST" action="{{ url_for('analyze') }}" enctype="multipart/form-data">
+    <section class="panel">
+      <div class="panel-head">
+        <span class="step-badge">{{ arabic_num[ns.step] }}</span>
+        <div>
+          <h2>مصدر البيانات</h2>
+          <p>ارفع ملف الفواتير أو أدخلها يدويًا</p>
+        </div>
+      </div>
+      {% set ns.step = ns.step + 1 %}
+
+      <div class="segmented" role="tablist">
+        <button type="button" class="segmented-btn active" data-subtab="upload">📤 رفع ملف</button>
+        <button type="button" class="segmented-btn" data-subtab="manual">✍ إدخال يدوي</button>
+      </div>
+
+      <div class="subtab-panel" id="panel-upload">
+        <div class="upload-row">
+          <label class="file-drop" id="fileDrop">
+            <input type="file" name="file" id="fileInput" accept=".csv,.xlsx">
+            <span class="file-drop-icon">📄</span>
+            <span class="file-drop-text" id="fileDropText">اسحب الملف هنا أو اضغط للاختيار</span>
+            <span class="file-drop-sub">CSV أو Excel (xlsx)</span>
+          </label>
+          <a class="btn btn-outline" href="{{ url_for('download_template') }}">
+            <span>⬇</span> تحميل قالب فارغ
+          </a>
+        </div>
+        <div class="hint-box">
+          <b>ملفك بأي أسماء أعمدة يشتغل:</b>
+          <p>ارفع أي جدول فواتير مهما كانت أسماء أعمدته. بعد الرفع مباشرة ستظهر لك شاشة لتحديد يدوي لأي عمود يقابل كل حقل — لا نخمّن شيئًا.</p>
+          {% if pending_columns %}
+          <p class="hint-file-selected">📄 الملف الحالي: <b>{{ pending_filename }}</b> — أكمل المطابقة أدناه.</p>
+          {% endif %}
+          <button type="submit" formaction="{{ url_for('upload_preview') }}" class="btn btn-primary" id="uploadPreviewBtn">
+            {{ '🔄 رفع ملف آخر' if pending_columns else '📎 رفع ومطابقة الأعمدة' }}
+          </button>
+        </div>
+      </div>
+
+      <div class="subtab-panel hidden" id="panel-manual">
+        <div class="manual-grid">
+          <div class="field">
+            <label for="m_invoice_id">رقم الفاتورة</label>
+            <input type="number" id="m_invoice_id" min="1" step="1" value="1">
+          </div>
+          <div class="field">
+            <label for="m_date">التاريخ</label>
+            <input type="date" id="m_date">
+          </div>
+          <div class="field">
+            <label for="m_hour">الساعة (0-23)</label>
+            <input type="number" id="m_hour" min="0" max="23" step="1" value="12">
+          </div>
+          <div class="field">
+            <label for="m_amount">المبلغ</label>
+            <input type="number" id="m_amount" min="0" step="10" value="0">
+          </div>
+          <div class="field">
+            <label for="m_employee">الموظف</label>
+            <input type="text" id="m_employee" placeholder="مثال: E1">
+          </div>
+          <div class="field">
+            <label for="m_payment">طريقة الدفع</label>
+            <select id="m_payment">
+              <option value="cash">نقدي</option>
+              <option value="card">بطاقة</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="m_discount">نسبة الخصم %</label>
+            <input type="number" id="m_discount" min="0" max="100" step="5" value="0">
+          </div>
+          <div class="field field-btn">
+            <button type="button" class="btn btn-primary" id="addManualBtn">+ إضافة فاتورة</button>
+          </div>
+        </div>
+
+        <div class="manual-table-wrap">
+          <table class="data-table" id="manualTable">
+            <thead>
+              <tr>
+                <th>#</th><th>التاريخ</th><th>الساعة</th><th>المبلغ</th>
+                <th>الموظف</th><th>الدفع</th><th>الخصم %</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="manualTbody"></tbody>
+          </table>
+          <p class="empty-note" id="manualEmptyNote">لم تتم إضافة فواتير يدويًا بعد.</p>
+        </div>
+
+        <div class="manual-actions">
+          <button type="button" class="btn btn-outline" id="downloadManualBtn">⬇ تنزيل كـ CSV</button>
+          <button type="button" class="btn btn-danger-ghost" id="clearManualBtn">مسح الكل</button>
+        </div>
+      </div>
+
+      <input type="hidden" name="manual_rows_json" id="manualRowsJson" value="[]">
+    </section>
+
+    {% if pending_columns %}
+    <section class="panel">
+      <div class="panel-head">
+        <span class="step-badge">{{ arabic_num[ns.step] }}</span>
+        <div>
+          <h2>مطابقة الأعمدة</h2>
+          <p>حدد عمود ملفك المقابل لكل حقل — الحقول باللون الأحمر إلزامية والباقي اختياري</p>
+        </div>
+      </div>
+      {% set ns.step = ns.step + 1 %}
+
+      <div class="mapping-grid">
+        {% for field in mapping_fields %}
+        <div class="field">
+          <label for="map_{{ field.key }}">{{ field.label }} {% if field.required %}<span class="req-star">*</span>{% endif %}</label>
+          <select name="map_{{ field.key }}" id="map_{{ field.key }}">
+            <option value="">{{ '— اختر العمود —' if field.required else 'بدون (تجاهل هذا الحقل)' }}</option>
+            {% for col in pending_columns %}
+            <option value="{{ col }}" {% if mapping_selection.get(field.key) == col %}selected{% endif %}>{{ col }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endfor %}
+      </div>
+      <p class="hint">الحقول الاختيارية (الموظف، طريقة الدفع، نسبة الخصم) يمكن تركها بدون مطابقة، وسيعمل التحليل بدونها.</p>
+    </section>
+    {% endif %}
+
+    <section class="panel">
+      <div class="panel-head">
+        <span class="step-badge">{{ arabic_num[ns.step] }}</span>
+        <div>
+          <h2>إعدادات التحليل</h2>
+          <p>اضبط حساسية الكشف وطريقة تجميع البروفايل</p>
+        </div>
+      </div>
+      {% set ns.step = ns.step + 1 %}
+      <div class="settings-row">
+        <div class="field">
+          <label for="rateSlider">حساسية الكشف <span class="rate-pill" id="rateLabel">{{ rate }}%</span></label>
+          <input type="range" name="rate" id="rateSlider" min="1" max="15" value="{{ rate }}">
+          <div class="range-scale"><span>أقل حساسية</span><span>أعلى حساسية</span></div>
+        </div>
+        <div class="field">
+          <label for="groupColSelect">تحليل البروفايل حسب</label>
+          <select name="group_col" id="groupColSelect">
+            <option value="employee" {% if not has_employee %}disabled{% endif %} {% if group_col == 'employee' %}selected{% endif %}>الموظف{% if not has_employee %} (غير متاح — لم يُحدَّد عمود الموظف){% endif %}</option>
+            <option value="month" {% if group_col == 'month' %}selected{% endif %}>الشهر</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <button type="submit" class="btn btn-primary btn-lg" id="analyzeBtn">
+      <span class="btn-icon">🔍</span> {{ 'تأكيد المطابقة وتحليل الفواتير' if pending_columns else 'تحليل الفواتير الآن' }}
+    </button>
+  </form>
+
+  {% if results %}
+  <section class="panel results-panel">
+    <div class="result-tabs">
+      <button type="button" class="result-tab-btn {% if active_tab != 'profile' %}active{% endif %}" data-restab="invoice">📋 مستوى الفاتورة</button>
+      <button type="button" class="result-tab-btn {% if active_tab == 'profile' %}active{% endif %}" data-restab="profile">👤 مستوى البروفايل</button>
+    </div>
+
+    <div class="result-panel {% if active_tab == 'profile' %}hidden{% endif %}" id="restab-invoice">
+      {% if results.low_data_warning %}
+      <div class="alert alert-info">ℹ عدد الفواتير {{ results.total }} فقط. النتائج تكون أكثر دقة مع 30 فاتورة أو أكثر.</div>
+      {% endif %}
+
+      <div class="metrics-row">
+        <div class="metric-card">
+          <span class="metric-icon">🧾</span>
+          <div>
+            <span class="metric-value">{{ results.total }}</span>
+            <span class="metric-label">إجمالي الفواتير</span>
+          </div>
+        </div>
+        <div class="metric-card metric-flag">
+          <span class="metric-icon">🚩</span>
+          <div>
+            <span class="metric-value">{{ results.flagged_count }}</span>
+            <span class="metric-label">فواتير مشبوهة</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <span class="metric-icon">📊</span>
+          <div>
+            <span class="metric-value">{{ results.flag_rate }}%</span>
+            <span class="metric-label">نسبة الاشتباه</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>رقم الفاتورة</th><th>التاريخ</th><th>الساعة</th><th>المبلغ</th>
+              <th>الموظف</th><th>الدفع</th><th>الخصم %</th><th>سبب الاشتباه</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in results.rows %}
+            <tr class="flagged-row">
+              <td>{{ row.invoice_id }}</td>
+              <td>{{ row.date }}</td>
+              <td>{{ row.hour }}</td>
+              <td class="num">{{ '%.2f'|format(row.amount) }}</td>
+              <td>{{ row.employee }}</td>
+              <td>{{ row.payment_ar }}</td>
+              <td>{{ row.discount_pct }}</td>
+              <td class="reason-cell">
+                {% for tag in row.reason_tags %}<span class="tag tag-danger">{{ tag }}</span>{% endfor %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="empty-note">لا توجد فواتير مشبوهة ضمن هذه الحساسية.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <a class="btn btn-outline" href="{{ url_for('download_flagged') }}">⬇ تحميل النتائج</a>
+    </div>
+
+    <div class="result-panel {% if active_tab != 'profile' %}hidden{% endif %}" id="restab-profile">
+      {% if profile %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ 'الموظف' if profile.group_col == 'employee' else 'الشهر' }}</th>
+              <th>عدد الفواتير</th><th>متوسط المبلغ</th><th>متوسط الخصم</th>
+              <th>نسبة النقدي</th><th>نسبة خارج الدوام</th><th>نسبة الخصم المرتفع</th>
+              <th>درجة الخطورة</th><th>الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in profile.rows %}
+            <tr class="{% if row.flagged == 1 %}flagged-row{% endif %}">
+              <td><b>{{ row.name }}</b></td>
+              <td>{{ row.invoice_count }}</td>
+              <td class="num">{{ '%.2f'|format(row.avg_amount) }}</td>
+              <td class="num">{{ '%.2f'|format(row.avg_discount) }}</td>
+              <td class="num">{{ '%.2f'|format(row.cash_ratio) }}</td>
+              <td class="num">{{ '%.2f'|format(row.off_hours_ratio) }}</td>
+              <td class="num">{{ '%.2f'|format(row.high_discount_ratio) }}</td>
+              <td><span class="risk-badge risk-{{ 'high' if row.flagged == 1 else 'low' }}">{{ row.risk_score }}</span></td>
+              <td>{% if row.flagged == 1 %}<span class="tag tag-danger">⚠ عالي الخطورة</span>{% else %}<span class="tag tag-success">طبيعي</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bar-chart">
+        {% for row in profile.rows %}
+        {% set max_score = (profile.rows|map(attribute='risk_score')|max) or 1 %}
+        <div class="bar-row">
+          <span class="bar-name">{{ row.name }}</span>
+          <div class="bar-track">
+            <div class="bar-fill {{ 'bar-high' if row.flagged == 1 else '' }}"
+                 style="width: {{ (row.risk_score / max_score * 100) if max_score > 0 else 0 }}%"></div>
+          </div>
+          <span class="bar-value">{{ row.risk_score }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if profile.risky %}
+      <div class="alert alert-warning">⚠ مرتفعو الخطورة: {{ profile.risky|join('، ') }}</div>
+      {% else %}
+      <div class="alert alert-success">✓ لا توجد بروفايلات عالية الخطورة</div>
+      {% endif %}
+
+      <a class="btn btn-outline" href="{{ url_for('download_profile') }}">⬇ تحميل تحليل البروفايل</a>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+</main>
+
+<footer class="site-footer">
+  <p>يقظة — نظام ذكي لكشف احتيال الفواتير</p>
+  <p>© يقظة. جميع الحقوق محفوظة.</p>
+</footer>
+
+<script>
+  window.__manualRows = {{ manual_rows|tojson }};
+  window.__hasData = {{ 'true' if has_data else 'false' }};
+</script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

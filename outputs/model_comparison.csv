@@ -1,0 +1,5 @@
+Model,Caught,False Alarms,Precision,Recall,F1
+Elliptic Envelope,38,4,0.905,0.95,0.927
+Isolation Forest,32,3,0.914,0.8,0.853
+One-Class SVM,23,9,0.719,0.575,0.639
+Local Outlier Factor,18,10,0.643,0.45,0.529
