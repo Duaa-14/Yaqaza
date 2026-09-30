@@ -6,9 +6,11 @@ from sklearn.preprocessing import StandardScaler
 # Canonical schema used internally once a file's columns are mapped, and the schema manual entries already use.
 REQUIRED_COLUMNS = ['invoice_id', 'date', 'hour', 'amount', 'employee', 'payment', 'discount_pct']
 
-# Fields the user maps an uploaded file's own columns onto. invoice_id is never mapped -- it's
-# always assigned as a running sequence, since the user is never asked to identify an ID column.
+# Fields the user maps an uploaded file's own columns onto. invoice_id is optional: if the file
+# has no real invoice-number column, one is auto-assigned as a running sequence. Mapping a real
+# invoice-number column when one exists is what makes the sequence-gap check below meaningful.
 MAPPING_FIELDS = [
+    {'key': 'invoice_id', 'label': 'رقم الفاتورة', 'required': False},
     {'key': 'amount', 'label': 'المبلغ', 'required': True},
     {'key': 'date', 'label': 'التاريخ', 'required': True},
     {'key': 'hour', 'label': 'الساعة', 'required': True},
@@ -20,6 +22,7 @@ MAPPING_FIELDS = [
 # Literal column-name matches only (English name or a known Arabic synonym) -- never based on
 # column content. Used to pre-fill the mapping screen; the user can always change any selection.
 COLUMN_NAME_SYNONYMS = {
+    'invoice_id': ['invoice_id', 'رقم الفاتورة', 'رقم فاتورة'],
     'amount': ['amount', 'المبلغ', 'الإجمالي', 'المبلغ الإجمالي', 'القيمة', 'السعر', 'اجمالي الفاتورة'],
     'date': ['date', 'التاريخ', 'تاريخ الفاتورة', 'اليوم'],
     'hour': ['hour', 'الساعة', 'الوقت', 'وقت الفاتورة'],
@@ -72,12 +75,18 @@ def apply_mapping(raw_df, mapping, start_id=1):
         raise ValueError('لم يتم تحديد الأعمدة الإلزامية التالية: ' + '، '.join(missing))
 
     out = pd.DataFrame(index=raw_df.index)
-    out['invoice_id'] = range(start_id, start_id + len(raw_df))
     out['amount'] = pd.to_numeric(raw_df[mapping['amount']], errors='coerce')
     out['date'] = raw_df[mapping['date']]
     out['hour'] = pd.to_numeric(raw_df[mapping['hour']], errors='coerce')
 
     flags = {}
+
+    if mapping.get('invoice_id'):
+        out['invoice_id'] = raw_df[mapping['invoice_id']]
+        flags['has_invoice_id'] = True
+    else:
+        out['invoice_id'] = range(start_id, start_id + len(raw_df))
+        flags['has_invoice_id'] = False
 
     if mapping.get('employee'):
         out['employee'] = raw_df[mapping['employee']].astype(str)
@@ -143,6 +152,91 @@ def detect_invoice_fraud(df, rate):
     flagged['reason'] = flagged.apply(_reasons, axis=1)
     flagged = flagged.sort_values('amount', ascending=False)
     return df, flagged
+
+
+def check_invoice_sequence(df, id_col='invoice_id', date_col='date'):
+    """Independent data-completeness check: looks for gaps in the invoice-number sequence.
+
+    This is purely about whether invoice numbers are missing from the sequence -- it has
+    nothing to do with the fraud-detection model and never feeds into it. Returns None
+    (skip quietly, no error) when the id column doesn't exist, isn't numeric, or there
+    aren't at least two distinct numeric ids to compare -- i.e. it isn't a usable sequence
+    to begin with.
+    """
+    if id_col not in df.columns:
+        return None
+
+    ids = pd.to_numeric(df[id_col], errors='coerce')
+    valid_mask = ids.notna()
+    if valid_mask.sum() < 2:
+        return None
+
+    work = pd.DataFrame({'_id': ids[valid_mask].astype('int64')})
+    if date_col in df.columns:
+        try:
+            work['_date'] = pd.to_datetime(df.loc[valid_mask, date_col].values)
+        except Exception:
+            work['_date'] = pd.NaT
+    else:
+        work['_date'] = pd.NaT
+
+    work = work.drop_duplicates(subset='_id').sort_values('_id').reset_index(drop=True)
+    if len(work) < 2:
+        return None
+
+    min_id, max_id = int(work['_id'].iloc[0]), int(work['_id'].iloc[-1])
+    if max_id - min_id < 1:
+        return None
+
+    missing_ids = []
+    gaps = []
+    for i in range(1, len(work)):
+        prev_id = int(work['_id'].iloc[i - 1])
+        cur_id = int(work['_id'].iloc[i])
+        if cur_id - prev_id > 1:
+            gap_missing = list(range(prev_id + 1, cur_id))
+            missing_ids.extend(gap_missing)
+            gaps.append({
+                'after_id': prev_id,
+                'before_id': cur_id,
+                'size': len(gap_missing),
+                'missing_ids': gap_missing,
+                'date_after': work['_date'].iloc[i - 1],
+                'date_before': work['_date'].iloc[i],
+            })
+
+    result = {
+        'total_present': len(work),
+        'expected_total': max_id - min_id + 1,
+        'min_id': min_id,
+        'max_id': max_id,
+        'gap_count': len(gaps),
+        'missing_count': len(missing_ids),
+        'missing_ids': missing_ids,
+        'gaps': gaps,
+        'concentration': None,
+    }
+
+    if gaps:
+        period_totals = {}
+        for gap in gaps:
+            period_date = gap['date_before'] if pd.notna(gap['date_before']) else gap['date_after']
+            if pd.isna(period_date):
+                continue
+            period = period_date.strftime('%Y-%m')
+            period_totals[period] = period_totals.get(period, 0) + gap['size']
+
+        if period_totals:
+            top_period, top_count = max(period_totals.items(), key=lambda kv: kv[1])
+            share = top_count / len(missing_ids)
+            if share >= 0.5:
+                result['concentration'] = {
+                    'period': top_period,
+                    'missing_in_period': top_count,
+                    'share': round(share, 2),
+                }
+
+    return result
 
 
 def build_profile(df, group_col):

@@ -12,16 +12,16 @@
     });
   });
 
-  // ---- results tabs (invoice / profile) ----
+  // ---- results tabs (invoice / profile / sequence) ----
   document.querySelectorAll('.result-tab-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
       document.querySelectorAll('.result-tab-btn').forEach(function (b) { b.classList.remove('active'); });
       btn.classList.add('active');
       var target = btn.dataset.restab;
-      var invoicePanel = document.getElementById('restab-invoice');
-      var profilePanel = document.getElementById('restab-profile');
-      if (invoicePanel) invoicePanel.classList.toggle('hidden', target !== 'invoice');
-      if (profilePanel) profilePanel.classList.toggle('hidden', target !== 'profile');
+      ['invoice', 'profile', 'sequence'].forEach(function (name) {
+        var panel = document.getElementById('restab-' + name);
+        if (panel) panel.classList.toggle('hidden', target !== name);
+      });
     });
   });
 

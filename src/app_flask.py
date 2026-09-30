@@ -9,7 +9,7 @@ from flask import Flask, render_template, request, session, send_file, redirect,
 
 from analysis import (
     REQUIRED_COLUMNS, MAPPING_FIELDS, apply_mapping, auto_match_columns,
-    add_features, detect_invoice_fraud, build_profile,
+    add_features, detect_invoice_fraud, build_profile, check_invoice_sequence,
 )
 
 # templates/ and static/ live at the project root, as siblings of src/, not inside it.
@@ -74,6 +74,7 @@ def index():
         mapping_fields=MAPPING_FIELDS,
         mapping_selection=store.get('mapping_selection', {}),
         has_employee=store.get('has_employee', True),
+        sequence_check=store.get('sequence_check'),
     )
 
 
@@ -178,6 +179,7 @@ def analyze():
 
     _run_invoice_level(store, df, rate)
     _run_profile_level(store, df, group_col)
+    _run_sequence_check(store, df)  # independent data-completeness check, not part of the fraud model
 
     return redirect(url_for('index'))
 
@@ -219,6 +221,39 @@ def _run_profile_level(store, raw_df, group_col):
     }
     store['profile'] = profile
     store['profile_csv'] = prof.to_csv()
+
+
+def _run_sequence_check(store, raw_df):
+    """Independent invoice-number gap check -- computed once per analysis, has no
+    connection to the fraud-detection model or its results."""
+    raw_result = check_invoice_sequence(raw_df)
+    if raw_result is None:
+        store['sequence_check'] = None
+        return
+
+    def fmt_date(ts):
+        return None if pd.isna(ts) else pd.Timestamp(ts).strftime('%Y-%m-%d')
+
+    store['sequence_check'] = {
+        'total_present': raw_result['total_present'],
+        'expected_total': raw_result['expected_total'],
+        'min_id': raw_result['min_id'],
+        'max_id': raw_result['max_id'],
+        'gap_count': raw_result['gap_count'],
+        'missing_count': raw_result['missing_count'],
+        'missing_ids': raw_result['missing_ids'],
+        'gaps': [
+            {
+                'after_id': gap['after_id'],
+                'before_id': gap['before_id'],
+                'size': gap['size'],
+                'date_after': fmt_date(gap['date_after']),
+                'date_before': fmt_date(gap['date_before']),
+            }
+            for gap in raw_result['gaps']
+        ],
+        'concentration': raw_result['concentration'],
+    }
 
 
 @app.route('/reanalyze/<int:rate>')

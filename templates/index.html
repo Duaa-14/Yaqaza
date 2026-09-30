@@ -224,9 +224,10 @@
     <div class="result-tabs">
       <button type="button" class="result-tab-btn {% if active_tab != 'profile' %}active{% endif %}" data-restab="invoice">📋 مستوى الفاتورة</button>
       <button type="button" class="result-tab-btn {% if active_tab == 'profile' %}active{% endif %}" data-restab="profile">👤 مستوى البروفايل</button>
+      <button type="button" class="result-tab-btn {% if active_tab == 'sequence' %}active{% endif %}" data-restab="sequence">🔢 تسلسل أرقام الفواتير</button>
     </div>
 
-    <div class="result-panel {% if active_tab == 'profile' %}hidden{% endif %}" id="restab-invoice">
+    <div class="result-panel {% if active_tab in ('profile', 'sequence') %}hidden{% endif %}" id="restab-invoice">
       {% if results.low_data_warning %}
       <div class="alert alert-info">ℹ عدد الفواتير {{ results.total }} فقط. النتائج تكون أكثر دقة مع 30 فاتورة أو أكثر.</div>
       {% endif %}
@@ -337,6 +338,89 @@
       {% endif %}
 
       <a class="btn btn-outline" href="{{ url_for('download_profile') }}">⬇ تحميل تحليل البروفايل</a>
+      {% endif %}
+    </div>
+
+    <div class="result-panel {% if active_tab != 'sequence' %}hidden{% endif %}" id="restab-sequence">
+      <p class="hint" style="margin-top:0;">فحص مستقل تمامًا عن نموذج كشف الاحتيال — يتحقق فقط من وجود فجوات في تسلسل أرقام الفواتير، ولا يؤثر على نتائج الكشف أعلاه ولا يتأثر بها.</p>
+
+      {% if not sequence_check %}
+      <div class="alert alert-info">ℹ لا يمكن فحص تسلسل أرقام الفواتير على هذه البيانات (أرقام الفواتير غير رقمية أو لا تشكّل تسلسلًا كافيًا للفحص).</div>
+      {% else %}
+
+      <div class="metrics-row">
+        <div class="metric-card">
+          <span class="metric-icon">🔢</span>
+          <div>
+            <span class="metric-value">{{ sequence_check.expected_total }}</span>
+            <span class="metric-label">النطاق المتوقع ({{ sequence_check.min_id }}–{{ sequence_check.max_id }})</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <span class="metric-icon">🧾</span>
+          <div>
+            <span class="metric-value">{{ sequence_check.total_present }}</span>
+            <span class="metric-label">فواتير موجودة</span>
+          </div>
+        </div>
+        <div class="metric-card metric-flag">
+          <span class="metric-icon">❓</span>
+          <div>
+            <span class="metric-value">{{ sequence_check.missing_count }}</span>
+            <span class="metric-label">أرقام مفقودة</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <span class="metric-icon">🕳️</span>
+          <div>
+            <span class="metric-value">{{ sequence_check.gap_count }}</span>
+            <span class="metric-label">عدد الفجوات</span>
+          </div>
+        </div>
+      </div>
+
+      {% if sequence_check.gap_count == 0 %}
+      <div class="alert alert-success">✓ لا توجد فجوات في تسلسل أرقام الفواتير — كل الأرقام بين {{ sequence_check.min_id }} و{{ sequence_check.max_id }} موجودة.</div>
+      {% else %}
+      <div class="alert alert-warning">
+        ⚠ توجد فجوات في تسلسل أرقام الفواتير. هذا <b>ليس دليلاً على مخالفة</b> — قد يكون سببها فواتير ملغاة، تعدد أجهزة كاشير تتشارك نفس التسلسل، أو تسلسل يُعاد ضبطه دوريًا. يحتاج الأمر مراجعة يدوية لمعرفة السبب الفعلي.
+      </div>
+
+      {% if sequence_check.concentration %}
+      <div class="alert alert-info">
+        ℹ أغلب الفجوات مركّزة في فترة واحدة: <b>{{ sequence_check.concentration.period }}</b>
+        ({{ sequence_check.concentration.missing_in_period }} من أصل {{ sequence_check.missing_count }} رقمًا مفقودًا،
+        أي {{ '%.0f'|format(sequence_check.concentration.share * 100) }}%). يستحق هذا تركيز المراجعة على تلك الفترة تحديدًا.
+      </div>
+      {% endif %}
+
+      <div class="hint-box">
+        <b>الأرقام المفقودة ({{ sequence_check.missing_count }}):</b>
+        <div class="hint-chips">
+          {% for n in sequence_check.missing_ids %}<span class="chip">{{ n }}</span>{% endfor %}
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-top:16px;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>آخر رقم قبل الفجوة</th><th>أول رقم بعد الفجوة</th><th>عدد الأرقام المفقودة</th><th>الفترة الزمنية للفجوة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for gap in sequence_check.gaps %}
+            <tr>
+              <td>{{ gap.after_id }}</td>
+              <td>{{ gap.before_id }}</td>
+              <td class="num">{{ gap.size }}</td>
+              <td>{{ gap.date_after or '—' }} → {{ gap.date_before or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
       {% endif %}
     </div>
   </section>
